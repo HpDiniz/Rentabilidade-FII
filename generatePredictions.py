@@ -1,25 +1,22 @@
 import re
 import bs4
 import json
+import pickle
 import requests
 import datetime
 import dateutil
 
 from datetime import date
 from bs4 import BeautifulSoup
+from xgboost import XGBRegressor
 from dateutil.relativedelta import relativedelta
 
 import numpy as np
 import pandas as pd
 import yfinance as yf
 
-from xgboost import XGBRegressor
-from flask import Flask, render_template
-
-app = Flask(__name__)
-
-if __name__ == "__main__":
-	app.run(host='0.0.0.0')
+import warnings; 
+warnings.simplefilter('ignore')
     
 def updateColumn(columnName, line, newRow):
     if '<b>'+columnName+':</b>' in line:
@@ -65,40 +62,8 @@ def realizaPredicao(dataframe, column, month):
     predicao = modelo_xgb.predict(validacao[column][-1])
     return (predicao[0])
 
-@app.route('/')
-def index():
-    return predictFIIs(2)
+def predictFIIs():
 
-    #response = {'fundos': [{'codigo': 'RBDS11',
-    #'dividendos futuro': 'R$ 1.16',
-    #'ordem': '1',
-    #'preço futuro': 'R$ 7.01',
-    #'rentabilidade': 0.165},
-    #{'codigo': 'KNRE11',
-    #'dividendos futuro': 'R$ 0.04',
-    #'ordem': '2',
-    #'preço futuro': 'R$ 0.91',
-    #'rentabilidade': 0.044},
-    #{'codigo': 'PLRI11',
-    #'dividendos futuro': 'R$ 1.22',
-    #'ordem': '3',
-    #'preço futuro': 'R$ 41.0',
-    #'rentabilidade': 0.03}],
-    #'mes_alvo': '04/2022',
-    #'outros_meses': ['04/2022',
-    #'05/2022',
-    #'06/2022',
-    #'07/2022',
-    #'08/2022',
-    #'09/2022'],
-    #'qtd_meses': 6}
-
-    #return render_template('index.html', response=response)#response=response)
-
-@app.route('/<int:add_months>')
-def predictFIIs(add_months):
-
-    today = date.today().strftime("%d/%m/%Y")
     first_day = pd.to_datetime('today').replace(day=1,hour=0,minute=0,second=0,microsecond=0)
     this_month = (first_day).strftime("%Y-%m")
     last_month = (first_day - relativedelta(months=1)).strftime("%Y-%m")
@@ -259,54 +224,49 @@ def predictFIIs(add_months):
 
     columns_str = ['Código','Endereço', 'Bairro', 'Cidade']
     df_ativos[columns_str] = df_ativos[columns_str].astype("string")
+    
+    for y in range(6):
 
-    predict_months = int(add_months)
+        predict_months = y+1
 
-    for t in df['Códigodo fundo']:
-        print("Predicting " + t + "...")
-        idx = df[(df['Códigodo fundo'] == t)].index[0]
-        df.loc[idx,['Preço futuro']] = realizaPredicao(dfs[t],'Close', predict_months)
-        df.loc[idx,['Dividendos futuros']] = realizaPredicao(dfs[t],'Dividends', predict_months)
+        for t in df['Códigodo fundo']:
+            print("Predicting " + t + "...")
+            idx = df[(df['Códigodo fundo'] == t)].index[0]
+            df.loc[idx,['Preço futuro']] = realizaPredicao(dfs[t],'Close', predict_months)
+            df.loc[idx,['Dividendos futuros']] = realizaPredicao(dfs[t],'Dividends', predict_months)
 
-    df['Rentabilidade'] = df['Dividendos futuros']/df['Preço futuro']
+        df['Rentabilidade'] = df['Dividendos futuros']/df['Preço futuro']
 
-    meses = []
+        meses = []
 
-    for i in range(-1,5):
-        mes_alvo = (first_day + relativedelta(months=(predict_months+i))).strftime("%m/%Y")
-        meses.append(mes_alvo)
+        for i in range(6):
+            meses.append((first_day + relativedelta(months=(i))).strftime("%m/%Y"))
 
-    mes_alvo = meses[0]
+        mes_alvo = meses[y]
 
-    top3_fii = df.nlargest(3, 'Rentabilidade')
-    top3_fii = top3_fii[['Códigodo fundo','Rentabilidade','Preço futuro','Dividendos futuros']]
-    top3_fii.reset_index(inplace=True)
+        top3_fii = df.nlargest(3, 'Rentabilidade')
+        top3_fii = top3_fii[['Códigodo fundo','Rentabilidade','Preço futuro','Dividendos futuros']]
+        top3_fii.reset_index(inplace=True)
 
-    response = {
-        "mes_alvo": mes_alvo,
-        "outros_meses": meses,
-        "qtd_meses": len(meses),
-        "fundos": [{
-            "ordem": "1",
-            "codigo": top3_fii.iloc[0]["Códigodo fundo"],
-            "rentabilidade": round(top3_fii.iloc[0]["Rentabilidade"],3),
-            "preço futuro": "R$ " + str(round(top3_fii.iloc[0]["Preço futuro"],2)),
-            "dividendos futuro": "R$ " + str(round(top3_fii.iloc[0]["Dividendos futuros"],2))
-        },
-        {
-            "ordem": "2",
-            "codigo": top3_fii.iloc[1]["Códigodo fundo"],
-            "rentabilidade": round(top3_fii.iloc[1]["Rentabilidade"],3),
-            "preço futuro": "R$ " + str(round(top3_fii.iloc[1]["Preço futuro"],2)),
-            "dividendos futuro": "R$ " + str(round(top3_fii.iloc[1]["Dividendos futuros"],2))
-        },
-        {
-            "ordem": "3",
-            "codigo": top3_fii.iloc[2]["Códigodo fundo"],
-            "rentabilidade": round(top3_fii.iloc[2]["Rentabilidade"],3),
-            "preço futuro": "R$ " + str(round(top3_fii.iloc[2]["Preço futuro"],2)),
-            "dividendos futuro": "R$ " + str(round(top3_fii.iloc[2]["Dividendos futuros"],2))
-        }]
-    }
+        fundos_ranking = []
 
-    return render_template('index.html', response=response)
+        for i in range(3):
+            fundos_ranking.append({
+                "ordem": str(i+1),
+                "codigo": top3_fii.iloc[i]["Códigodo fundo"],
+                "rentabilidade": round(top3_fii.iloc[i]["Rentabilidade"],3),
+                "preço futuro": "R$ " + str(round(top3_fii.iloc[i]["Preço futuro"],2)),
+                "dividendos futuro": "R$ " + str(round(top3_fii.iloc[i]["Dividendos futuros"],2))
+            })
+
+        response = response = {
+            "mes_alvo": mes_alvo,
+            "outros_meses": meses,
+            "qtd_meses": len(meses),
+            "fundos": fundos_ranking
+        }
+
+        with open('outputs/'+ mes_alvo.replace("/","") + '.dictionary', 'wb') as config_dictionary_file:
+            pickle.dump(response, config_dictionary_file)
+
+predictFIIs()
