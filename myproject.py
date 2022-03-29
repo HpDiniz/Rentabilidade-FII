@@ -16,6 +16,11 @@ def index():
 @app.route('/<int:add_months>')
 def predictFIIs(add_months):
 
+    if add_months < 1:
+        add_months = 1
+    elif add_months > 6:
+        add_months = 6
+
     first_day = pd.to_datetime('today').replace(day=1,hour=0,minute=0,second=0,microsecond=0)
 
     mes_alvo = []
